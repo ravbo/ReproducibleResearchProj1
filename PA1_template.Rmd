@@ -1,0 +1,132 @@
+Reproducible Research, Project 1
+=============================
+
+##### General / loading dependencies etc
+
+```{r message=FALSE}
+rm(list=ls())
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+options(scipen=999) # displaying integers without scientific notation
+```
+
+##### Question 1, reading data
+```{r}
+dat <- read.csv("activity.csv",head=T)
+# dat$date <- as.POSIXct(dat$date,"%Y-%m-%d",tz="GMT")
+```
+
+
+##### Question 2, histogram of the total number of steps take each day
+```{r}
+steps <-  dat %>% group_by(date) %>% summarise(steps.per.date=sum(steps,na.rm=T)) 
+ggplot(data=steps, aes(steps.per.date))+
+      geom_histogram(binwidth = 600)+
+      labs(x="Total number of steps per day",y="Frequency ")+
+      ggtitle("Histogram of the total number of steps taken per day")
+```
+
+##### Question 3, mean and median of steps taken each day
+```{r, echo=T, results='hide'}
+mean(steps$steps.per.date)
+median(steps$steps.per.date)
+```
+
+Mean of steps taken each day is `r floor(mean(steps$steps.per.date))` and the Median is `r round(median(steps$steps.per.date))` 
+
+##### Question 4, time series plot of the average number of steps taken
+```{r}
+avg.steps.per.interval <- 
+      dat %>% 
+      group_by(interval) %>%
+      summarise(average.steps=mean(steps,na.rm=T))
+
+ggplot(data=avg.steps.per.interval,aes(interval,average.steps))+
+      geom_line()
+
+
+
+```
+
+##### Question 5, the 5-minute interval that, on average, contains the maximum number of steps
+
+
+```{r}
+max.interval <- subset(avg.steps.per.interval,avg.steps.per.interval$average.steps==max(avg.steps.per.interval$average.steps))
+```
+
+So interval `r max.interval$interval` is the period with the highest activity. It corresponds well with the peak on the graph from question 4. The average number of steps in that period was `r round(max.interval$average.steps)` steps
+
+
+##### Question 6 and 7, code to describe and show a strategy for imputing missing data and Histogram
+
+In the data set there are `r sum(is.na(dat))` missing values which corresponds to around 4.37% of the entire data set.
+
+Filling the missing values with the average of each interval would result in an unchanged mean of the entire data set.
+
+Again using the dplyr package:
+
+```{r}
+imp <- inner_join(dat, avg.steps.per.interval, by="interval") %>%
+      mutate(steps=ifelse(is.na(steps),average.steps,steps)) %>%
+      select(date,interval, steps)
+
+dat.imp <- 
+      imp %>%
+      group_by(date) %>%
+      summarise(steps.per.day.imp = sum(steps))
+ggplot(data=dat.imp,aes(steps.per.day.imp))+
+      geom_histogram(binwidth = 600)+
+      labs(x="Steps per day",y="Frequency")+
+      ggtitle("Histogram as in question 2 (with imputed data)")
+```
+
+
+Calculating mean and median after imputation.
+```{r}
+imp.dat2 <- 
+      imp %>% 
+      group_by(date) %>%
+      summarise(steps.per.date=sum(steps,na.rm=T))
+mean(imp.dat2$steps.per.date)
+median(imp.dat2$steps.per.date)
+```
+Shows that mean `r round(mean(imp.dat2$steps.per.date))` is, as expected, the same as before but the median is now `r round(median(imp.dat2$steps.per.date))` higher than before (and equal to the mean). Apparently the process of imputing the missing values did not have a major impact on the mean / median of the data set. 
+
+##### Question 8, panel plot comparing the average number of steps taken per 5-minute interval across weekdays and weekends
+
+Using the imputed data to look at the differences between weekday activity and weekend activity.
+```{r}
+imp$date <- as.POSIXct(imp$date)
+imp$day <- weekdays(imp$date)
+day.interval <-  
+      imp %>%
+      group_by(interval,day) %>%
+      summarise(mean.w.day=mean(steps,na.rm=T))
+
+```
+
+Dividing days into weekdays and weekend-days
+
+```{r}
+weekday <- filter(day.interval, day=="Monday" | day== "Tuesday" | day == "Wednesday" | day == "Thursday" | day == "Friday")
+weekendday <- filter(day.interval, day=="Saturday" | day == "Sunday")
+```
+
+```{r}
+weekday.dat <- 
+      weekday %>% 
+      group_by(interval) %>%
+      summarise(var1=mean(mean.w.day))
+weekday.gg <- ggplot(data=weekday.dat, aes(interval, var1))+geom_line()+ylim(c(0,250))+ylab("Average steps")+ggtitle("Weekdays")
+
+weekendday.dat <- 
+      weekendday %>%
+      group_by(interval) %>%
+      summarise(var2=mean(mean.w.day))
+weekendday.gg <- ggplot(data=weekendday.dat,aes(interval,var2))+geom_line()+ylim(c(0,250))+ylab("Average steps")+ggtitle("Weekend")
+
+grid.arrange(weekday.gg,weekendday.gg,nrow=2)
+
+```
